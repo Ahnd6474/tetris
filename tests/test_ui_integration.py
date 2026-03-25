@@ -42,7 +42,7 @@ def test_controller_actions_update_the_shared_game_view() -> None:
     assert initial_view.stage_status == "active"
     assert initial_view.status_message.startswith("Arrows move")
     assert initial_view.hold_kind is None
-    assert initial_view.next_queue[:3] == ("O", "T", "L")
+    assert initial_view.next_queue[:3] == ("I", "T", "L")
     assert _count_cells(initial_view, "active") == 4
 
     session = app.stage_session.piece_session
@@ -57,12 +57,12 @@ def test_controller_actions_update_the_shared_game_view() -> None:
 
     assert app.handle_action("hold")
     held_view = renderer.views[-1]
-    assert held_view.hold_kind == "I"
-    assert _active_labels(held_view) == {"O"}
+    assert held_view.hold_kind == "O"
+    assert _active_labels(held_view) == {"I"}
     assert held_view.next_queue[:2] == ("T", "L")
 
-    key = session.objects[1][2]
-    session.objects[1][2] = None
+    key = session.objects[3][2]
+    session.objects[3][2] = None
     session.objects[session.height - 1][2] = key
     app.stage_session.refresh()
     app.run(frame_limit=1)

@@ -19,15 +19,18 @@ def test_bootstrap_catalog_loads_bundled_stage_data() -> None:
     first_stage = catalog.first()
     assert first_stage.title == "Key Delivery"
     assert first_stage.objective.kind == "key_to_bottom"
-    assert first_stage.piece_queue[:2] == ("I", "O")
-    assert isinstance(first_stage.objects[1][2], KeyObject)
+    assert first_stage.piece_queue[:2] == ("O", "I")
+    assert first_stage.board[4] == ("O", "O", None, None, "O", "O")
+    assert isinstance(first_stage.objects[3][2], KeyObject)
 
     door_stage = catalog.get("stage-002")
     assert isinstance(door_stage.tiles[5][2], DoorTile)
+    assert door_stage.board[5] == ("T", "T", None, "T", "T", "T")
 
     ice_stage = catalog.get("stage-003")
-    assert ice_stage.tiles[2][2] == IceTile()
-    assert ice_stage.tiles[3][3] == IceTile()
+    assert ice_stage.board_height == 8
+    assert ice_stage.tiles[6][1] == IceTile()
+    assert ice_stage.tiles[7][1] == IceTile()
 
 
 def test_catalog_loads_from_external_json_file(tmp_path) -> None:
@@ -47,6 +50,12 @@ def test_catalog_loads_from_external_json_file(tmp_path) -> None:
                         "board_width": 4,
                         "board_height": 4,
                         "piece_queue": ["I", "O"],
+                        "board": [
+                            "....",
+                            ".X..",
+                            "....",
+                            "...."
+                        ],
                         "tiles": [
                             "....",
                             ".I..",
@@ -76,7 +85,7 @@ def test_catalog_loads_from_external_json_file(tmp_path) -> None:
     )
     assert stage.create_board() == [
         [None, None, None, None],
-        [None, None, None, None],
+        [None, "X", None, None],
         [None, None, None, None],
         [None, None, None, None],
     ]

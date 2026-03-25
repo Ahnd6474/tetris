@@ -38,8 +38,8 @@ def test_stage_session_progression_and_status_transitions() -> None:
     assert session.state.status == "active"
     assert session.piece_session is not None
 
-    key = session.piece_session.objects[1][2]
-    session.piece_session.objects[1][2] = None
+    key = session.piece_session.objects[3][2]
+    session.piece_session.objects[3][2] = None
     session.piece_session.objects[5][2] = key
     evaluation = session.refresh()
 
