@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from tetris.engine import ActivePiece, PieceBag, PieceSession
+from tetris.engine import ActivePiece, GemObject, KeyObject, PieceBag, PieceSession, RockTile
 
 
-def test_lock_active_clears_rows_and_compacts_stage_layers() -> None:
+def test_lock_active_clears_rows_and_respects_stage_mechanics() -> None:
     snapshots = []
+    shifted_gem = GemObject("gem-shifted")
+    shifted_key = KeyObject("key-shifted")
+    cleared_gem = GemObject("gem-cleared")
     session = PieceSession(
         width=4,
         height=4,
@@ -17,15 +20,15 @@ def test_lock_active_clears_rows_and_compacts_stage_layers() -> None:
         ],
         tiles=[
             [None, None, None, None],
-            [None, "ice", None, None],
-            ["rock", None, None, None],
-            [None, None, "ice", None],
+            [RockTile(), None, None, None],
+            [None, None, None, None],
+            [None, None, None, None],
         ],
         objects=[
-            [None, None, "gem", None],
-            ["key", None, None, None],
+            [None, None, shifted_gem, None],
+            [shifted_key, None, None, None],
             [None, None, None, None],
-            [None, "door", None, None],
+            [None, cleared_gem, None, None],
         ],
         on_lines_cleared=lambda _session, cleared: snapshots.extend(cleared),
     )
@@ -44,8 +47,7 @@ def test_lock_active_clears_rows_and_compacts_stage_layers() -> None:
     assert not session.hold_used
 
     assert tuple(snapshot.index for snapshot in snapshots) == (2, 3)
-    assert snapshots[0].tiles[0] == "rock"
-    assert snapshots[1].objects[1] == "door"
+    assert snapshots[1].objects[1] is cleared_gem
 
     assert session.board == [
         [None, None, None, None],
@@ -55,16 +57,15 @@ def test_lock_active_clears_rows_and_compacts_stage_layers() -> None:
     ]
     assert session.tiles == [
         [None, None, None, None],
+        [RockTile(), None, None, None],
         [None, None, None, None],
         [None, None, None, None],
-        [None, "ice", None, None],
     ]
-    assert session.objects == [
-        [None, None, None, None],
-        [None, None, None, None],
-        [None, None, "gem", None],
-        ["key", None, None, None],
-    ]
+    assert session.objects[2][2] is shifted_gem
+    assert session.objects[3][0] is shifted_key
+    assert sum(obj is shifted_gem for row in session.objects for obj in row) == 1
+    assert sum(obj is shifted_key for row in session.objects for obj in row) == 1
+    assert sum(obj is cleared_gem for row in session.objects for obj in row) == 0
     assert session.active is not None
     assert session.active.kind == "O"
 

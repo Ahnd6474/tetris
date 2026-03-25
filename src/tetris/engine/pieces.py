@@ -6,6 +6,8 @@ from itertools import islice
 from random import Random
 from typing import Callable
 
+from ..stage.cells import apply_line_clear_to_tile, clears_with_line, is_solid_tile
+
 
 type Cell = tuple[int, int]
 type BoardRow = list[str | None]
@@ -223,7 +225,9 @@ class PieceSession:
         for cell_x, cell_y in piece.translated_cells():
             if cell_x < 0 or cell_x >= self.width or cell_y >= self.height:
                 return True
-            if cell_y >= 0 and self.board[cell_y][cell_x] is not None:
+            if cell_y >= 0 and (
+                self.board[cell_y][cell_x] is not None or is_solid_tile(self.tiles[cell_y][cell_x])
+            ):
                 return True
         return False
 
@@ -269,14 +273,65 @@ class PieceSession:
         return True
 
     def filled_rows(self) -> tuple[int, ...]:
-        return tuple(row_index for row_index, row in enumerate(self.board) if all(cell is not None for cell in row))
+        return tuple(
+            row_index
+            for row_index, row in enumerate(self.board)
+            if any(cell is not None for cell in row)
+            and all(
+                cell is not None or is_solid_tile(self.tiles[row_index][column])
+                for column, cell in enumerate(row)
+            )
+        )
 
-    def _collapse_rows(self, cleared_rows: tuple[int, ...]) -> None:
+    def _cleared_rows_below(self, row_index: int, cleared_rows: tuple[int, ...]) -> int:
+        return sum(1 for cleared_row in cleared_rows if cleared_row > row_index)
+
+    def _find_target_row(self, layer: StageMatrix, column: int, start_row: int) -> int:
+        row_index = min(start_row, self.height - 1)
+        while row_index >= 0:
+            if is_solid_tile(self.tiles[row_index][column]):
+                row_index -= 1
+                continue
+            if layer[row_index][column] is not None:
+                row_index -= 1
+                continue
+            return row_index
+        raise RuntimeError("line clear compaction overflowed the board")
+
+    def _apply_tile_clear_effects(self, cleared_rows: tuple[int, ...]) -> None:
+        for row_index in cleared_rows:
+            for column, tile in enumerate(self.tiles[row_index]):
+                self.tiles[row_index][column] = apply_line_clear_to_tile(tile)
+
+    def _collapse_board(self, cleared_rows: tuple[int, ...]) -> None:
         cleared_row_set = set(cleared_rows)
-        for layer in (self.board, self.tiles, self.objects):
-            remaining_rows = [row.copy() for row_index, row in enumerate(layer) if row_index not in cleared_row_set]
-            empty_rows = [[None for _ in range(self.width)] for _ in range(len(cleared_rows))]
-            layer[:] = empty_rows + remaining_rows
+        new_board = create_board(self.width, self.height)
+        for column in range(self.width):
+            for row_index in range(self.height - 1, -1, -1):
+                block = self.board[row_index][column]
+                if block is None or row_index in cleared_row_set:
+                    continue
+                shift = self._cleared_rows_below(row_index, cleared_rows)
+                target_row = self._find_target_row(new_board, column, row_index + shift)
+                new_board[target_row][column] = block
+        self.board[:] = new_board
+
+    def _collapse_objects(self, cleared_rows: tuple[int, ...]) -> None:
+        cleared_row_set = set(cleared_rows)
+        new_objects = _create_stage_layer(self.width, self.height)
+        for column in range(self.width):
+            for row_index in range(self.height - 1, -1, -1):
+                obj = self.objects[row_index][column]
+                if obj is None:
+                    continue
+                if row_index in cleared_row_set and clears_with_line(obj):
+                    continue
+                shift = self._cleared_rows_below(row_index, cleared_rows)
+                if row_index in cleared_row_set:
+                    shift += 1
+                target_row = self._find_target_row(new_objects, column, row_index + shift)
+                new_objects[target_row][column] = obj
+        self.objects[:] = new_objects
 
     def clear_filled_rows(self) -> tuple[int, ...]:
         cleared_rows = self.filled_rows()
@@ -295,7 +350,9 @@ class PieceSession:
         if self.on_lines_cleared is not None:
             self.on_lines_cleared(self, snapshots)
 
-        self._collapse_rows(cleared_rows)
+        self._apply_tile_clear_effects(cleared_rows)
+        self._collapse_board(cleared_rows)
+        self._collapse_objects(cleared_rows)
         return cleared_rows
 
     def lock_active(self) -> LockResult:
