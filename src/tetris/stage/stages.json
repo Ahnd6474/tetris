@@ -1,0 +1,140 @@
+{
+  "stages": [
+    {
+      "id": "stage-001",
+      "title": "Key Delivery",
+      "objective": {
+        "kind": "key_to_bottom",
+        "summary": "Bring the key to the bottom row."
+      },
+      "board_width": 6,
+      "board_height": 6,
+      "piece_queue": ["I", "O", "T", "L"],
+      "tiles": [
+        "......",
+        "......",
+        "......",
+        "......",
+        "......",
+        "......"
+      ],
+      "objects": [
+        "......",
+        "..K...",
+        "......",
+        "......",
+        "......",
+        "......"
+      ]
+    },
+    {
+      "id": "stage-002",
+      "title": "Door Drill",
+      "objective": {
+        "kind": "key_to_door",
+        "summary": "Guide the key onto the door tile."
+      },
+      "board_width": 6,
+      "board_height": 6,
+      "piece_queue": ["T", "I", "O", "S"],
+      "tiles": [
+        "......",
+        "......",
+        "......",
+        "......",
+        "......",
+        "..D..."
+      ],
+      "objects": [
+        "......",
+        "..K...",
+        "......",
+        "......",
+        "......",
+        "......"
+      ]
+    },
+    {
+      "id": "stage-003",
+      "title": "Cold Storage",
+      "objective": {
+        "kind": "clear_ice",
+        "summary": "Clear every ice tile."
+      },
+      "board_width": 6,
+      "board_height": 6,
+      "piece_queue": ["I", "I", "O", "T"],
+      "tiles": [
+        "......",
+        "......",
+        "..II..",
+        "..II..",
+        "......",
+        "......"
+      ],
+      "objects": [
+        "......",
+        "......",
+        "......",
+        "......",
+        "......",
+        "......"
+      ]
+    },
+    {
+      "id": "stage-004",
+      "title": "Gem Sweep",
+      "objective": {
+        "kind": "collect_gems",
+        "summary": "Collect every gem by clearing its row."
+      },
+      "board_width": 6,
+      "board_height": 6,
+      "piece_queue": ["L", "J", "I", "O"],
+      "tiles": [
+        "......",
+        "......",
+        "......",
+        "......",
+        "......",
+        "......"
+      ],
+      "objects": [
+        "......",
+        "......",
+        ".G.G..",
+        "......",
+        "......",
+        "......"
+      ]
+    },
+    {
+      "id": "stage-005",
+      "title": "Vault Run",
+      "objective": {
+        "kind": "mixed",
+        "summary": "Clear the ice, collect the gems, and bring the key to the door.",
+        "requirements": ["clear_ice", "collect_gems", "key_to_door"]
+      },
+      "board_width": 6,
+      "board_height": 6,
+      "piece_queue": ["I", "T", "O", "L"],
+      "tiles": [
+        "......",
+        "..I...",
+        "...I..",
+        "......",
+        "......",
+        "...D.."
+      ],
+      "objects": [
+        "..K...",
+        "......",
+        "....G.",
+        ".G....",
+        "......",
+        "......"
+      ]
+    }
+  ]
+}

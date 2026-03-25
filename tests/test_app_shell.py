@@ -57,7 +57,7 @@ def test_app_shell_wires_runtime_stage_and_compatibility_exports() -> None:
     app = AppShell(config=AppConfig(headless=True), renderer=NullRenderer())
 
     assert app.loop.runtime is app.engine
-    assert app.objective_panel.stage_title == "Bootstrap Stage"
+    assert app.objective_panel.stage_title == "Key Delivery"
     assert app.objective_panel.stage_status == "ready"
     assert CompatLoop is EngineLoop
     assert GameState is EngineState

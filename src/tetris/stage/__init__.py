@@ -12,7 +12,17 @@ from .cells import (
     is_solid_tile,
 )
 from .data import StageCatalog, StageDefinition
-from .objectives import ObjectiveDefinition
+from .objectives import (
+    OBJECTIVE_CLEAR_ICE,
+    OBJECTIVE_COLLECT_GEMS,
+    OBJECTIVE_KEY_TO_BOTTOM,
+    OBJECTIVE_KEY_TO_DOOR,
+    ObjectiveDefinition,
+    ObjectiveEvaluation,
+    ObjectiveRequirement,
+    ObjectiveRequirementResult,
+    evaluate_objectives,
+)
 from .runtime import StageSession, StageState
 
 __all__ = [
@@ -21,7 +31,14 @@ __all__ = [
     "GoalTile",
     "IceTile",
     "KeyObject",
+    "OBJECTIVE_CLEAR_ICE",
+    "OBJECTIVE_COLLECT_GEMS",
+    "OBJECTIVE_KEY_TO_BOTTOM",
+    "OBJECTIVE_KEY_TO_DOOR",
     "ObjectiveDefinition",
+    "ObjectiveEvaluation",
+    "ObjectiveRequirement",
+    "ObjectiveRequirementResult",
     "RockTile",
     "StageCatalog",
     "StageDefinition",
@@ -30,6 +47,7 @@ __all__ = [
     "WallTile",
     "apply_line_clear_to_tile",
     "clears_with_line",
+    "evaluate_objectives",
     "is_goal_tile",
     "is_solid_tile",
 ]
