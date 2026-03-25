@@ -1,8 +1,14 @@
 from __future__ import annotations
 
 import importlib
+import subprocess
+import sys
+from pathlib import Path
 
 from tetris import AppConfig, create_app
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_core_modules_import() -> None:
@@ -41,3 +47,15 @@ def test_cli_main_headless_exit_code() -> None:
     main_module = importlib.import_module("tetris.cli")
 
     assert main_module.main(["--headless", "--frames", "2"]) == 0
+
+
+def test_module_entrypoint_runs_from_repo_root() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "tetris", "--headless", "--frames", "2"],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
