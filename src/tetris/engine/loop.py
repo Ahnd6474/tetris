@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from time import sleep
-from typing import Protocol
+from typing import Callable, Protocol
 
 from ..config import AppConfig
 from .state import EngineRuntime, EngineState
@@ -18,6 +18,7 @@ class GameLoop:
     config: AppConfig
     renderer: FrameSink
     runtime: EngineRuntime | None = None
+    on_tick: Callable[[EngineState], None] | None = None
 
     def __post_init__(self) -> None:
         if self.runtime is None:
@@ -30,14 +31,14 @@ class GameLoop:
     def start(self) -> None:
         self.state.running = True
 
-    def run(self, frame_limit: int = 1) -> int:
-        if frame_limit < 0:
+    def run(self, frame_limit: int | None = 1) -> int:
+        if frame_limit is not None and frame_limit < 0:
             raise ValueError("frame_limit must be >= 0")
         if not self.state.running:
             raise RuntimeError("game loop must be started before running")
 
         frames = 0
-        while self.state.running and frames < frame_limit:
+        while self.state.running and (frame_limit is None or frames < frame_limit):
             self.tick()
             frames += 1
             if not self.config.headless and self.config.target_fps > 0:
@@ -50,6 +51,8 @@ class GameLoop:
             raise RuntimeError("game loop must be started before ticking")
 
         self.state.tick += 1
+        if self.on_tick is not None:
+            self.on_tick(self.state)
         self.renderer.render(self.state)
 
     def stop(self) -> None:

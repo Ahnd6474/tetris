@@ -7,7 +7,7 @@ from .app import create_app
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run the Tetris MVP bootstrap app.")
+    parser = argparse.ArgumentParser(description="Run the puzzle-adventure Tetris prototype.")
     parser.add_argument(
         "--headless",
         action="store_true",
@@ -16,7 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--frames",
         type=int,
-        default=1,
+        default=None,
         help="Number of frames to advance before exiting.",
     )
     return parser
@@ -26,9 +26,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(list(argv) if argv is not None else None)
 
+    frame_limit = args.frames if args.frames is not None else (1 if args.headless else None)
+
     app = create_app(headless=args.headless)
     try:
-        app.run(frame_limit=args.frames)
+        app.run(frame_limit=frame_limit)
     finally:
         app.shutdown()
 

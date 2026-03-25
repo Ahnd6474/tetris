@@ -1,4 +1,32 @@
-from .panels import ObjectivePanelModel, build_objective_panel
-from .renderers import NullRenderer, Renderer
+from .panels import (
+    BoardCellModel,
+    GameViewModel,
+    ObjectivePanelModel,
+    RequirementStatusModel,
+    build_game_view,
+    build_objective_panel,
+)
+from .renderers import InteractiveRenderer, NullRenderer, Renderer, UIController
 
-__all__ = ["NullRenderer", "ObjectivePanelModel", "Renderer", "build_objective_panel"]
+
+def create_default_renderer(*, headless: bool) -> Renderer:
+    if headless:
+        return NullRenderer()
+
+    from .tk_renderer import TkRenderer
+
+    return TkRenderer()
+
+__all__ = [
+    "BoardCellModel",
+    "GameViewModel",
+    "InteractiveRenderer",
+    "NullRenderer",
+    "ObjectivePanelModel",
+    "Renderer",
+    "RequirementStatusModel",
+    "UIController",
+    "build_game_view",
+    "build_objective_panel",
+    "create_default_renderer",
+]
