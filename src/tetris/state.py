@@ -1,7 +1,5 @@
-from dataclasses import dataclass
+from .engine import BoardSpec, EngineRuntime, EngineState
 
+GameState = EngineState
 
-@dataclass(slots=True)
-class GameState:
-    tick: int = 0
-    running: bool = False
+__all__ = ["BoardSpec", "EngineRuntime", "EngineState", "GameState"]
