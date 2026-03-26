@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tetris"
 version = "0.1.0"
-description = "Bootstrap skeleton for a puzzle-driven Tetris MVP."
+description = "Runnable stage-based puzzle Tetris prototype with shared Tk and headless bootstrap."
 readme = "README.md"
 requires-python = ">=3.12"
 authors = [
@@ -19,7 +19,7 @@ dev = [
 ]
 
 [project.scripts]
-tetris = "tetris.__main__:main"
+tetris = "tetris.cli:main"
 
 [tool.setuptools]
 package-dir = { "" = "src" }

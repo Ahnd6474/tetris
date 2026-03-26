@@ -17,15 +17,13 @@ def test_runtime_boundary_audit_brief_tracks_current_seams_and_targets() -> None
         "src/tetris/stage/runtime.py",
         "src/tetris/ui/tk_renderer.py",
         "src/tetris/app_shell.py",
-        "Product Gaps Visible Today",
-        "Startup And Packaging Assumptions",
-        "Persistence Gaps",
-        "Brittle UI Flow",
-        "Content Scaling Risks",
-        "ST2 Stabilize App Startup",
-        "ST3 Add Player Persistence",
-        "ST4 Polish Core UX",
-        "ST5 Harden Stage Content Pipeline",
+        "Current Subsystem Boundaries",
+        "Bootstrap, Persistence, And Entry",
+        "Regression Coverage",
+        "tests/test_bootstrap.py",
+        "tests/test_app_shell.py",
+        "tests/test_player_persistence.py",
+        "tests/test_stage_loader.py",
     )
 
     for phrase in required_phrases:

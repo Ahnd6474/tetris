@@ -38,7 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--stage-file",
         type=Path,
         default=None,
-        help="Path to an external stage JSON file.",
+        help="Path to an external stage JSON file or catalog directory.",
     )
     parser.add_argument(
         "--save-path",
