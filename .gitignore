@@ -8,3 +8,6 @@ __pycache__/
 *.pyc
 build/
 dist/
+.local/
+.idea/
+src/*.egg-info/
