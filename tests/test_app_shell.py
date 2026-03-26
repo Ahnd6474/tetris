@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 from tetris import AppConfig
-from tetris.app_shell import AppShell
+from tetris.app_shell import AppShell, StartupFailureKind
 from tetris.engine import EngineState, GameLoop as EngineLoop
 from tetris.game_loop import GameLoop as CompatLoop
 from tetris.state import GameState
@@ -57,6 +57,7 @@ def test_app_shell_wires_runtime_stage_and_compatibility_exports() -> None:
     app = AppShell(config=AppConfig(headless=True), renderer=NullRenderer())
 
     assert app.loop.runtime is app.engine
+    assert app.stage_session is not None
     assert app.objective_panel.stage_title == "Key Delivery"
     assert app.objective_panel.stage_status == "ready"
     assert CompatLoop is EngineLoop
@@ -70,3 +71,63 @@ def test_app_shell_wires_runtime_stage_and_compatibility_exports() -> None:
     app.shutdown()
 
     assert app.objective_panel.stage_status == "ready"
+
+
+class _ExplodingRenderer:
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+        self.bound = None
+        self.is_open = False
+
+    def bind(self, controller) -> None:
+        self.bound = controller
+
+    def open(self) -> None:
+        raise self.error
+
+    def render(self, state: EngineState) -> None:
+        return None
+
+    def close(self) -> None:
+        self.is_open = False
+
+
+class TclError(RuntimeError):
+    pass
+
+
+def test_boot_converts_missing_tkinter_into_controlled_startup_failure() -> None:
+    error = ModuleNotFoundError("No module named 'tkinter'")
+    error.name = "tkinter"
+    app = AppShell(
+        config=AppConfig.bootstrap(),
+        renderer=_ExplodingRenderer(error),
+    )
+
+    app.boot()
+
+    assert app.startup_failure is not None
+    assert app.startup_failure.kind == StartupFailureKind.TKINTER_UNAVAILABLE
+    assert isinstance(app.renderer, NullRenderer)
+    assert app.loop.renderer is app.renderer
+    assert app.game_view.stage_status == "startup-error"
+    assert app.run(frame_limit=3) == 0
+
+    app.shutdown()
+
+
+def test_boot_converts_display_creation_failure_into_controlled_startup_failure() -> None:
+    app = AppShell(
+        config=AppConfig.bootstrap(),
+        renderer=_ExplodingRenderer(TclError("no display name and no $DISPLAY environment variable")),
+    )
+
+    app.boot()
+
+    assert app.startup_failure is not None
+    assert app.startup_failure.kind == StartupFailureKind.DISPLAY_UNAVAILABLE
+    assert isinstance(app.renderer, NullRenderer)
+    assert app.loop.renderer is app.renderer
+    assert app.game_view.stage_status == "startup-error"
+
+    app.shutdown()
