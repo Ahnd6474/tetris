@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 
+from ..actions import AppAction
 from ..engine import EngineState
 from .panels import GameViewModel
 
@@ -26,7 +27,7 @@ class UIController(Protocol):
     def game_view(self) -> GameViewModel:
         ...
 
-    def handle_action(self, action: str) -> bool:
+    def handle_action(self, action: AppAction | str) -> bool:
         ...
 
     def stop(self) -> None:

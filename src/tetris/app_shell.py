@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Callable
 
+from .actions import AppAction, ShellState, build_action_model
 from .config import AppConfig, RendererStrategy, StageSource, StageSourceKind
 from .engine import EngineRuntime, EngineState, GameLoop, PieceSession
 from .stage import StageCatalog, StageSession
@@ -117,6 +118,7 @@ class TetrisApp:
     engine: EngineRuntime = field(init=False)
     stage_session: StageSession | None = field(init=False, default=None)
     loop: GameLoop = field(init=False)
+    _shell_state: ShellState = field(init=False, default=ShellState.TITLE)
     _booted: bool = field(default=False, init=False)
     _last_gravity_tick: int = field(default=0, init=False)
 
@@ -139,6 +141,7 @@ class TetrisApp:
             runtime=self.engine,
             on_tick=self._advance_gameplay,
         )
+        self._sync_shell_state_from_session()
         bind = getattr(self.renderer, "bind", None)
         if callable(bind):
             bind(self)
@@ -153,15 +156,24 @@ class TetrisApp:
             return ObjectivePanelModel(
                 stage_title="Startup Error",
                 objective_summary="Resolve the startup problem and relaunch the app.",
-                stage_status="startup-error",
+                stage_status=ShellState.STARTUP_ERROR.value,
             )
-        return build_objective_panel(self.stage_session)
+        return build_objective_panel(self.stage_session, stage_status=self.shell_state.value)
 
     @property
     def game_view(self) -> GameViewModel:
         if self.startup_failure is not None or self.stage_session is None:
             return self._build_startup_error_view()
-        return build_game_view(self.stage_session)
+        return build_game_view(
+            self.stage_session,
+            stage_status=self.shell_state.value,
+            status_message=self._status_message(),
+            actions=self._available_actions(),
+        )
+
+    @property
+    def shell_state(self) -> ShellState:
+        return self._shell_state
 
     @property
     def gravity_interval(self) -> int:
@@ -170,13 +182,6 @@ class TetrisApp:
     def boot(self) -> None:
         if self._booted:
             return
-
-        if self.stage_session is not None and self.startup_failure is None:
-            try:
-                self.stage_session.activate()
-            except Exception as error:
-                self.stage_session.reset()
-                self._remember_startup_failure(_build_stage_failure(self.config.stage_source, error))
 
         try:
             self.renderer.open()
@@ -216,6 +221,7 @@ class TetrisApp:
         self.loop.stop()
         if self.stage_session is not None:
             self.stage_session.reset()
+        self._sync_shell_state_from_session()
         self.renderer.close()
         self._booted = False
         self._last_gravity_tick = 0
@@ -224,21 +230,61 @@ class TetrisApp:
         if self._booted:
             self.loop.stop()
 
-    def handle_action(self, action: str) -> bool:
+    def handle_action(self, action: AppAction | str) -> bool:
+        try:
+            resolved_action = AppAction(action)
+        except ValueError:
+            return False
+
         handlers = {
-            "move_left": self.move_left,
-            "move_right": self.move_right,
-            "rotate_clockwise": self.rotate_clockwise,
-            "soft_drop": self.soft_drop,
-            "hard_drop": self.hard_drop,
-            "hold": self.hold,
-            "restart_stage": self.restart_stage,
-            "advance_stage": self.advance_stage,
+            AppAction.START: self.start,
+            AppAction.PAUSE: self.pause,
+            AppAction.MOVE_LEFT: self.move_left,
+            AppAction.MOVE_RIGHT: self.move_right,
+            AppAction.ROTATE_CLOCKWISE: self.rotate_clockwise,
+            AppAction.SOFT_DROP: self.soft_drop,
+            AppAction.HARD_DROP: self.hard_drop,
+            AppAction.HOLD: self.hold,
+            AppAction.RESTART_STAGE: self.restart_stage,
+            AppAction.NEXT_STAGE: self.advance_stage,
         }
-        handler = handlers.get(action)
+        handler = handlers.get(resolved_action)
         if handler is None:
             return False
         return handler()
+
+    def start(self) -> bool:
+        if not self._booted or self.startup_failure is not None or self.stage_session is None:
+            return False
+
+        if self.shell_state == ShellState.PAUSED:
+            self._shell_state = ShellState.ACTIVE
+            self._render_now()
+            return True
+
+        if self.shell_state != ShellState.TITLE:
+            return False
+
+        try:
+            self.stage_session.activate(self.stage_session.current_stage.identifier)
+        except Exception as error:
+            self.stage_session.reset()
+            self._remember_startup_failure(_build_stage_failure(self.config.stage_source, error))
+            self._render_now()
+            return False
+
+        self._last_gravity_tick = self.loop.state.tick
+        self._sync_shell_state_from_session()
+        self._render_now()
+        return True
+
+    def pause(self) -> bool:
+        if self._active_piece_session() is None:
+            return False
+
+        self._shell_state = ShellState.PAUSED
+        self._render_now()
+        return True
 
     def move_left(self) -> bool:
         return self._apply_move(lambda session: session.move_left())
@@ -257,6 +303,7 @@ class TetrisApp:
         moved = session.soft_drop()
         if moved:
             self._last_gravity_tick = self.loop.state.tick
+            self._sync_shell_state_from_session()
             self._render_now()
         return moved
 
@@ -267,6 +314,7 @@ class TetrisApp:
 
         session.hard_drop()
         self._last_gravity_tick = self.loop.state.tick
+        self._sync_shell_state_from_session()
         self._render_now()
         return True
 
@@ -274,11 +322,17 @@ class TetrisApp:
         return self._apply_move(lambda session: session.hold())
 
     def restart_stage(self) -> bool:
-        if not self._booted or self.startup_failure is not None or self.stage_session is None:
+        if (
+            not self._booted
+            or self.startup_failure is not None
+            or self.stage_session is None
+            or self.stage_session.piece_session is None
+        ):
             return False
 
         self.stage_session.restart()
         self._last_gravity_tick = self.loop.state.tick
+        self._sync_shell_state_from_session()
         self._render_now()
         return True
 
@@ -287,7 +341,7 @@ class TetrisApp:
             not self._booted
             or self.startup_failure is not None
             or self.stage_session is None
-            or self.stage_session.state.status != "cleared"
+            or self.shell_state != ShellState.CLEARED
         ):
             return False
 
@@ -296,6 +350,7 @@ class TetrisApp:
             return False
 
         self._last_gravity_tick = self.loop.state.tick
+        self._sync_shell_state_from_session()
         self._render_now()
         return True
 
@@ -306,6 +361,7 @@ class TetrisApp:
 
         changed = action(session)
         if changed:
+            self._sync_shell_state_from_session()
             self._render_now()
         return changed
 
@@ -320,12 +376,14 @@ class TetrisApp:
             or session is None
             or session.active is None
             or session.game_over
+            or self.shell_state != ShellState.ACTIVE
             or self.stage_session.state.status != "active"
         ):
             return None
         return session
 
     def _advance_gameplay(self, state: EngineState) -> None:
+        self._sync_shell_state_from_session()
         session = self._active_piece_session()
         if session is None:
             return
@@ -335,14 +393,81 @@ class TetrisApp:
         self._last_gravity_tick = state.tick
         if not session.soft_drop():
             session.lock_active()
+        self._sync_shell_state_from_session()
 
     def _render_now(self) -> None:
         if self._booted:
             self.renderer.render(self.loop.state)
 
-    def _remember_startup_failure(self, failure: StartupFailure) -> None:
+    def _remember_startup_failure(self, failure: StartupFailure | None) -> None:
+        if failure is None:
+            return
         if self.startup_failure is None:
             self.startup_failure = failure
+        self._shell_state = ShellState.STARTUP_ERROR
+
+    def _status_message(self) -> str:
+        if self.shell_state == ShellState.TITLE:
+            return "Press Enter or Start to begin."
+        if self.shell_state == ShellState.PAUSED:
+            return "Game paused. Press Enter to continue or R to restart."
+        if self.shell_state == ShellState.CLEARED:
+            if self._can_advance():
+                return "Stage cleared. Press N or Next Stage."
+            return "Final stage cleared. Press R to replay."
+        if self.shell_state == ShellState.FAILED:
+            return "Stage failed. Press R or Restart."
+        return "Arrows move, Up rotates, Down soft drops, Space hard drops, C holds."
+
+    def _available_actions(self) -> tuple:
+        if self.startup_failure is not None or self.stage_session is None:
+            return ()
+
+        if self.shell_state == ShellState.TITLE:
+            return (build_action_model(AppAction.START),)
+        if self.shell_state == ShellState.PAUSED:
+            return (
+                build_action_model(AppAction.START, label="Continue"),
+                build_action_model(AppAction.RESTART_STAGE),
+            )
+        if self.shell_state == ShellState.CLEARED:
+            actions = [build_action_model(AppAction.RESTART_STAGE)]
+            if self._can_advance():
+                actions.append(build_action_model(AppAction.NEXT_STAGE))
+            return tuple(actions)
+        if self.shell_state == ShellState.FAILED:
+            return (build_action_model(AppAction.RESTART_STAGE),)
+        return (
+            build_action_model(AppAction.PAUSE),
+            build_action_model(AppAction.RESTART_STAGE),
+            build_action_model(AppAction.MOVE_LEFT),
+            build_action_model(AppAction.MOVE_RIGHT),
+            build_action_model(AppAction.ROTATE_CLOCKWISE),
+            build_action_model(AppAction.SOFT_DROP),
+            build_action_model(AppAction.HARD_DROP),
+            build_action_model(AppAction.HOLD),
+        )
+
+    def _can_advance(self) -> bool:
+        if self.stage_session is None:
+            return False
+        return self.stage_session.catalog.next_after(self.stage_session.current_stage.identifier) is not None
+
+    def _sync_shell_state_from_session(self) -> None:
+        if self.startup_failure is not None:
+            self._shell_state = ShellState.STARTUP_ERROR
+            return
+        if self.stage_session is None or self.stage_session.piece_session is None:
+            self._shell_state = ShellState.TITLE
+            return
+        if self.stage_session.state.status == "cleared":
+            self._shell_state = ShellState.CLEARED
+            return
+        if self.stage_session.state.status == "failed":
+            self._shell_state = ShellState.FAILED
+            return
+        if self._shell_state != ShellState.PAUSED:
+            self._shell_state = ShellState.ACTIVE
 
     def _build_startup_error_view(self) -> GameViewModel:
         board_rows = tuple(
@@ -361,7 +486,7 @@ class TetrisApp:
             stage_label="Bootstrap",
             stage_title="Startup Error",
             objective_summary="The app could not finish startup.",
-            stage_status="startup-error",
+            stage_status=ShellState.STARTUP_ERROR.value,
             status_message=(
                 self.startup_failure.message
                 if self.startup_failure is not None
@@ -373,6 +498,7 @@ class TetrisApp:
             progress_lines=progress_lines,
             board_rows=board_rows,
             can_advance=False,
+            actions=(),
         )
 
 

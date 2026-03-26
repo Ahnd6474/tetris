@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from tetris import AppConfig
+from tetris.actions import AppAction, ShellState
 from tetris.app_shell import AppShell, StartupFailureKind
 from tetris.engine import EngineState, GameLoop as EngineLoop
 from tetris.game_loop import GameLoop as CompatLoop
@@ -59,18 +60,21 @@ def test_app_shell_wires_runtime_stage_and_compatibility_exports() -> None:
     assert app.loop.runtime is app.engine
     assert app.stage_session is not None
     assert app.objective_panel.stage_title == "Key Delivery"
-    assert app.objective_panel.stage_status == "ready"
+    assert app.objective_panel.stage_status == ShellState.TITLE.value
     assert CompatLoop is EngineLoop
     assert GameState is EngineState
 
     app.boot()
 
+    assert app.stage_session.state.status == "ready"
+    assert app.game_view.stage_status == ShellState.TITLE.value
+    assert app.handle_action(AppAction.START)
     assert app.stage_session.state.status == "active"
-    assert app.objective_panel.stage_status == "active"
+    assert app.objective_panel.stage_status == ShellState.ACTIVE.value
 
     app.shutdown()
 
-    assert app.objective_panel.stage_status == "ready"
+    assert app.objective_panel.stage_status == ShellState.TITLE.value
 
 
 class _ExplodingRenderer:
@@ -110,7 +114,7 @@ def test_boot_converts_missing_tkinter_into_controlled_startup_failure() -> None
     assert app.startup_failure.kind == StartupFailureKind.TKINTER_UNAVAILABLE
     assert isinstance(app.renderer, NullRenderer)
     assert app.loop.renderer is app.renderer
-    assert app.game_view.stage_status == "startup-error"
+    assert app.game_view.stage_status == ShellState.STARTUP_ERROR.value
     assert app.run(frame_limit=3) == 0
 
     app.shutdown()
@@ -128,6 +132,6 @@ def test_boot_converts_display_creation_failure_into_controlled_startup_failure(
     assert app.startup_failure.kind == StartupFailureKind.DISPLAY_UNAVAILABLE
     assert isinstance(app.renderer, NullRenderer)
     assert app.loop.renderer is app.renderer
-    assert app.game_view.stage_status == "startup-error"
+    assert app.game_view.stage_status == ShellState.STARTUP_ERROR.value
 
     app.shutdown()

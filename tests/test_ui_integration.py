@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from tetris import AppConfig, create_app
+from tetris.actions import AppAction, ShellState
 from tetris.engine import EngineState
 from tetris.ui import GameViewModel
 from tetris.ui.tk_renderer import TkRenderer
@@ -39,23 +40,38 @@ def test_controller_actions_update_the_shared_game_view() -> None:
 
     initial_view = renderer.views[-1]
     assert initial_view.stage_title == "Key Delivery"
-    assert initial_view.stage_status == "active"
-    assert initial_view.status_message.startswith("Arrows move")
+    assert initial_view.stage_status == ShellState.TITLE.value
+    assert initial_view.status_message == "Press Enter or Start to begin."
     assert initial_view.hold_kind is None
-    assert initial_view.next_queue[:3] == ("I", "T", "L")
-    assert _count_cells(initial_view, "active") == 4
+    assert initial_view.next_queue[:4] == ("O", "I", "T", "L")
+    assert _count_cells(initial_view, "active") == 0
+    assert _action(initial_view, AppAction.START).label == "Start"
+
+    assert app.handle_action(AppAction.START)
+    started_view = renderer.views[-1]
+    assert started_view.stage_status == ShellState.ACTIVE.value
+    assert started_view.status_message.startswith("Arrows move")
+    assert _count_cells(started_view, "active") == 4
 
     session = app.stage_session.piece_session
     assert session is not None
     start_x = session.active.x
 
-    assert app.handle_action("move_left")
+    assert app.handle_action(AppAction.PAUSE)
+    paused_view = renderer.views[-1]
+    assert paused_view.stage_status == ShellState.PAUSED.value
+    assert paused_view.status_message == "Game paused. Press Enter to continue or R to restart."
+    assert _action(paused_view, AppAction.START).label == "Continue"
+    assert not app.handle_action(AppAction.MOVE_LEFT)
+
+    assert app.handle_action(AppAction.START)
+    assert app.handle_action(AppAction.MOVE_LEFT)
     moved_view = renderer.views[-1]
     assert session.active is not None
     assert session.active.x == start_x - 1
     assert _count_cells(moved_view, "active") == 4
 
-    assert app.handle_action("hold")
+    assert app.handle_action(AppAction.HOLD)
     held_view = renderer.views[-1]
     assert held_view.hold_kind == "O"
     assert _active_labels(held_view) == {"I"}
@@ -68,24 +84,42 @@ def test_controller_actions_update_the_shared_game_view() -> None:
     app.run(frame_limit=1)
 
     cleared_view = renderer.views[-1]
-    assert cleared_view.stage_status == "cleared"
+    assert cleared_view.stage_status == ShellState.CLEARED.value
     assert cleared_view.can_advance
     assert "Stage cleared" in cleared_view.status_message
     assert "Key row: 6/6" in cleared_view.progress_lines
+    assert _action(cleared_view, AppAction.NEXT_STAGE).enabled
+
+    assert app.handle_action(AppAction.NEXT_STAGE)
+    next_stage_view = renderer.views[-1]
+    assert next_stage_view.stage_status == ShellState.ACTIVE.value
+
+    session = app.stage_session.piece_session
+    assert session is not None
+    session.game_over = True
+    app.stage_session.refresh()
+    app.run(frame_limit=1)
+
+    failed_view = renderer.views[-1]
+    assert failed_view.stage_status == ShellState.FAILED.value
+    assert failed_view.status_message == "Stage failed. Press R or Restart."
+    assert _action(failed_view, AppAction.RESTART_STAGE).enabled
 
     app.shutdown()
     assert not renderer.is_open
 
 
 def test_tk_renderer_key_bindings_match_app_actions() -> None:
-    assert TkRenderer.KEY_BINDINGS["<Left>"] == "move_left"
-    assert TkRenderer.KEY_BINDINGS["<Right>"] == "move_right"
-    assert TkRenderer.KEY_BINDINGS["<Up>"] == "rotate_clockwise"
-    assert TkRenderer.KEY_BINDINGS["<Down>"] == "soft_drop"
-    assert TkRenderer.KEY_BINDINGS["<space>"] == "hard_drop"
-    assert TkRenderer.KEY_BINDINGS["<KeyPress-c>"] == "hold"
-    assert TkRenderer.KEY_BINDINGS["<KeyPress-r>"] == "restart_stage"
-    assert TkRenderer.KEY_BINDINGS["<KeyPress-n>"] == "advance_stage"
+    assert TkRenderer.KEY_BINDINGS["<Return>"] == AppAction.START
+    assert TkRenderer.KEY_BINDINGS["<Escape>"] == AppAction.PAUSE
+    assert TkRenderer.KEY_BINDINGS["<Left>"] == AppAction.MOVE_LEFT
+    assert TkRenderer.KEY_BINDINGS["<Right>"] == AppAction.MOVE_RIGHT
+    assert TkRenderer.KEY_BINDINGS["<Up>"] == AppAction.ROTATE_CLOCKWISE
+    assert TkRenderer.KEY_BINDINGS["<Down>"] == AppAction.SOFT_DROP
+    assert TkRenderer.KEY_BINDINGS["<space>"] == AppAction.HARD_DROP
+    assert TkRenderer.KEY_BINDINGS["<KeyPress-c>"] == AppAction.HOLD
+    assert TkRenderer.KEY_BINDINGS["<KeyPress-r>"] == AppAction.RESTART_STAGE
+    assert TkRenderer.KEY_BINDINGS["<KeyPress-n>"] == AppAction.NEXT_STAGE
 
 
 def _count_cells(view: GameViewModel, kind: str) -> int:
@@ -94,3 +128,10 @@ def _count_cells(view: GameViewModel, kind: str) -> int:
 
 def _active_labels(view: GameViewModel) -> set[str]:
     return {cell.label for row in view.board_rows for cell in row if cell.kind == "active"}
+
+
+def _action(view: GameViewModel, target: AppAction):
+    for action in view.actions:
+        if action.action == target:
+            return action
+    raise AssertionError(f"missing action {target}")

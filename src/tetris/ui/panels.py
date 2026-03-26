@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from ..actions import ActionModel
 from ..stage import (
     OBJECTIVE_CLEAR_ICE,
     OBJECTIVE_COLLECT_GEMS,
@@ -57,6 +58,7 @@ class GameViewModel:
     progress_lines: tuple[str, ...]
     board_rows: tuple[tuple[BoardCellModel, ...], ...]
     can_advance: bool
+    actions: tuple[ActionModel, ...] = ()
 
     @property
     def board_width(self) -> int:
@@ -68,17 +70,29 @@ class GameViewModel:
     def board_height(self) -> int:
         return len(self.board_rows)
 
+    def action_for(self, target: object) -> ActionModel | None:
+        for action in self.actions:
+            if action.action == target:
+                return action
+        return None
 
-def build_objective_panel(session: StageSession) -> ObjectivePanelModel:
+
+def build_objective_panel(session: StageSession, *, stage_status: str | None = None) -> ObjectivePanelModel:
     stage = session.current_stage
     return ObjectivePanelModel(
         stage_title=stage.title,
         objective_summary=stage.objective.summary,
-        stage_status=session.state.status,
+        stage_status=stage_status or session.state.status,
     )
 
 
-def build_game_view(session: StageSession) -> GameViewModel:
+def build_game_view(
+    session: StageSession,
+    *,
+    stage_status: str | None = None,
+    status_message: str | None = None,
+    actions: tuple[ActionModel, ...] = (),
+) -> GameViewModel:
     stage = session.current_stage
     piece_session = session.piece_session
     evaluation = session.evaluation
@@ -129,14 +143,15 @@ def build_game_view(session: StageSession) -> GameViewModel:
         stage_label=f"Stage {current_index}/{total_stages}",
         stage_title=stage.title,
         objective_summary=stage.objective.summary,
-        stage_status=session.state.status,
-        status_message=_build_status_message(session, can_advance=can_advance),
+        stage_status=stage_status or session.state.status,
+        status_message=status_message or _build_status_message(session, can_advance=can_advance),
         hold_kind=hold_kind,
         next_queue=next_queue,
         requirements=_build_requirement_models(session),
         progress_lines=_build_progress_lines(stage.board_height, evaluation),
         board_rows=board_rows,
         can_advance=can_advance,
+        actions=actions,
     )
 
 

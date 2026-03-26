@@ -1,3 +1,4 @@
+from ..actions import ActionModel
 from .panels import (
     BoardCellModel,
     GameViewModel,
@@ -18,6 +19,7 @@ def create_default_renderer(*, headless: bool) -> Renderer:
     return TkRenderer()
 
 __all__ = [
+    "ActionModel",
     "BoardCellModel",
     "GameViewModel",
     "InteractiveRenderer",

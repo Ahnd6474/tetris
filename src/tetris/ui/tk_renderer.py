@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from ..actions import ACTION_LABELS, AppAction
 from ..engine import EngineState, GameLoop
 from .panels import BoardCellModel, GameViewModel
 from .renderers import UIController
@@ -49,23 +50,32 @@ class TkRenderer:
     _hold_label: Any = field(default=None, init=False, repr=False)
     _queue_label: Any = field(default=None, init=False, repr=False)
     _requirements_label: Any = field(default=None, init=False, repr=False)
+    _controls_label: Any = field(default=None, init=False, repr=False)
     _progress_label: Any = field(default=None, init=False, repr=False)
+    _start_button: Any = field(default=None, init=False, repr=False)
+    _pause_button: Any = field(default=None, init=False, repr=False)
+    _restart_button: Any = field(default=None, init=False, repr=False)
     _next_button: Any = field(default=None, init=False, repr=False)
     _loop: GameLoop | None = field(default=None, init=False, repr=False)
     _frames: int = field(default=0, init=False, repr=False)
 
     KEY_BINDINGS = {
-        "<Left>": "move_left",
-        "<Right>": "move_right",
-        "<Up>": "rotate_clockwise",
-        "<Down>": "soft_drop",
-        "<space>": "hard_drop",
-        "<KeyPress-c>": "hold",
-        "<KeyPress-C>": "hold",
-        "<KeyPress-r>": "restart_stage",
-        "<KeyPress-R>": "restart_stage",
-        "<KeyPress-n>": "advance_stage",
-        "<KeyPress-N>": "advance_stage",
+        "<Return>": AppAction.START,
+        "<KP_Enter>": AppAction.START,
+        "<Escape>": AppAction.PAUSE,
+        "<KeyPress-p>": AppAction.PAUSE,
+        "<KeyPress-P>": AppAction.PAUSE,
+        "<Left>": AppAction.MOVE_LEFT,
+        "<Right>": AppAction.MOVE_RIGHT,
+        "<Up>": AppAction.ROTATE_CLOCKWISE,
+        "<Down>": AppAction.SOFT_DROP,
+        "<space>": AppAction.HARD_DROP,
+        "<KeyPress-c>": AppAction.HOLD,
+        "<KeyPress-C>": AppAction.HOLD,
+        "<KeyPress-r>": AppAction.RESTART_STAGE,
+        "<KeyPress-R>": AppAction.RESTART_STAGE,
+        "<KeyPress-n>": AppAction.NEXT_STAGE,
+        "<KeyPress-N>": AppAction.NEXT_STAGE,
     }
 
     def bind(self, controller: UIController) -> None:
@@ -160,6 +170,17 @@ class TkRenderer:
         )
         self._requirements_label.pack(fill=tk.X, pady=(0, 8))
 
+        self._controls_label = tk.Label(
+            panel,
+            text="",
+            anchor="w",
+            justify=tk.LEFT,
+            bg="#1f1f1f",
+            fg="#d9d9d9",
+            font=("Consolas", 10),
+        )
+        self._controls_label.pack(fill=tk.X, pady=(0, 8))
+
         self._progress_label = tk.Label(
             panel,
             text="",
@@ -174,16 +195,31 @@ class TkRenderer:
         controls = tk.Frame(panel, bg="#1f1f1f")
         controls.pack(fill=tk.X)
 
-        tk.Button(
+        self._start_button = tk.Button(
+            controls,
+            text="Start (Enter)",
+            command=lambda: self._dispatch(AppAction.START),
+            width=14,
+        )
+        self._start_button.pack(side=tk.LEFT, padx=(0, 8))
+        self._pause_button = tk.Button(
+            controls,
+            text="Pause (Esc)",
+            command=lambda: self._dispatch(AppAction.PAUSE),
+            width=14,
+        )
+        self._pause_button.pack(side=tk.LEFT, padx=(0, 8))
+        self._restart_button = tk.Button(
             controls,
             text="Restart (R)",
-            command=lambda: self._dispatch("restart_stage"),
+            command=lambda: self._dispatch(AppAction.RESTART_STAGE),
             width=14,
-        ).pack(side=tk.LEFT, padx=(0, 8))
+        )
+        self._restart_button.pack(side=tk.LEFT, padx=(0, 8))
         self._next_button = tk.Button(
             controls,
             text="Next Stage (N)",
-            command=lambda: self._dispatch("advance_stage"),
+            command=lambda: self._dispatch(AppAction.NEXT_STAGE),
             width=14,
         )
         self._next_button.pack(side=tk.LEFT, padx=(0, 8))
@@ -221,8 +257,12 @@ class TkRenderer:
         self._hold_label.configure(text=f"Hold: {view.hold_kind or '-'}")
         self._queue_label.configure(text="Next:\n" + ("\n".join(view.next_queue) if view.next_queue else "-"))
         self._requirements_label.configure(text=self._format_requirements(view))
+        self._controls_label.configure(text=self._format_actions(view))
         self._progress_label.configure(text=self._format_progress(view))
-        self._next_button.configure(state=self._tk.NORMAL if view.can_advance else self._tk.DISABLED)
+        self._configure_action_button(self._start_button, view, AppAction.START, fallback="Start")
+        self._configure_action_button(self._pause_button, view, AppAction.PAUSE)
+        self._configure_action_button(self._restart_button, view, AppAction.RESTART_STAGE)
+        self._configure_action_button(self._next_button, view, AppAction.NEXT_STAGE)
         self._draw_board(view)
 
     def run_loop(self, game_loop: GameLoop, frame_limit: int | None = None) -> int:
@@ -273,7 +313,7 @@ class TkRenderer:
         except Exception:
             pass
 
-    def _dispatch(self, action: str) -> None:
+    def _dispatch(self, action: AppAction | str) -> None:
         if self.controller is None:
             return
         self.controller.handle_action(action)
@@ -325,3 +365,34 @@ class TkRenderer:
         if not view.progress_lines:
             return "Status:\n-"
         return "Status:\n" + "\n".join(view.progress_lines)
+
+    def _format_actions(self, view: GameViewModel) -> str:
+        if not view.actions:
+            return "Controls:\n-"
+        lines = []
+        for action in view.actions:
+            label = action.label
+            if action.shortcut:
+                label = f"{label} ({action.shortcut})"
+            lines.append(label)
+        return "Controls:\n" + "\n".join(lines)
+
+    def _configure_action_button(
+        self,
+        button: Any,
+        view: GameViewModel,
+        action: AppAction,
+        *,
+        fallback: str | None = None,
+    ) -> None:
+        if button is None or self._tk is None:
+            return
+
+        action_model = view.action_for(action)
+        label = action_model.label if action_model is not None else (fallback or ACTION_LABELS[action])
+        if action_model is not None and action_model.shortcut:
+            label = f"{label} ({action_model.shortcut})"
+        button.configure(
+            text=label,
+            state=self._tk.NORMAL if action_model is not None and action_model.enabled else self._tk.DISABLED,
+        )

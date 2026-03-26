@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from tetris import AppConfig, create_app
+from tetris.actions import AppAction, ShellState
 from tetris.app_shell import StartupFailureKind
 from tetris.config import RendererStrategy, RuntimeMode, StageSource, StageSourceKind
 
@@ -33,12 +34,16 @@ def test_headless_app_bootstrap_smoke() -> None:
     app.boot()
     assert app.is_booted
     assert app.renderer.is_open
+    assert app.game_view.stage_status == ShellState.TITLE.value
 
     frames = app.run(frame_limit=3)
 
     assert frames == 3
     assert app.loop.state.tick == 3
     assert app.renderer.frames_rendered == 3
+
+    assert app.handle_action(AppAction.START)
+    assert app.game_view.stage_status == ShellState.ACTIVE.value
 
     app.shutdown()
 
@@ -105,6 +110,8 @@ def test_create_app_loads_stages_from_the_configured_stage_source(tmp_path: Path
     app.boot()
 
     assert app.objective_panel.stage_title == "Bootstrap File Stage"
+    assert app.handle_action(AppAction.START)
+    assert app.game_view.stage_status == ShellState.ACTIVE.value
 
     app.shutdown()
 
@@ -124,7 +131,7 @@ def test_stage_loading_failures_become_controlled_app_state(tmp_path: Path) -> N
     app.boot()
 
     assert app.is_booted
-    assert app.game_view.stage_status == "startup-error"
+    assert app.game_view.stage_status == ShellState.STARTUP_ERROR.value
     assert "Unable to load stages" in app.game_view.status_message
     assert app.run(frame_limit=3) == 0
 
