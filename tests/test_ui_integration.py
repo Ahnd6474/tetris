@@ -32,9 +32,9 @@ class RecordingRenderer:
         self.is_open = False
 
 
-def test_controller_actions_update_the_shared_game_view() -> None:
+def test_controller_actions_update_the_shared_game_view(tmp_path) -> None:
     renderer = RecordingRenderer()
-    app = create_app(AppConfig(headless=True), renderer=renderer)
+    app = create_app(AppConfig(headless=True, save_path=tmp_path / "save.json"), renderer=renderer)
 
     app.boot()
 

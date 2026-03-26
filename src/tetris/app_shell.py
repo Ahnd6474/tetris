@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Callable
 
 from .actions import AppAction, ShellState, build_action_model
 from .config import AppConfig, RendererStrategy, StageSource, StageSourceKind
 from .engine import EngineRuntime, EngineState, GameLoop, PieceSession
+from .persistence import PlayerProgress, PlayerSaveData, PlayerSaveStore, PlayerSettings
 from .stage import StageCatalog, StageSession
 from .ui import (
     BoardCellModel,
@@ -118,11 +119,19 @@ class TetrisApp:
     engine: EngineRuntime = field(init=False)
     stage_session: StageSession | None = field(init=False, default=None)
     loop: GameLoop = field(init=False)
+    player_settings: PlayerSettings = field(init=False)
     _shell_state: ShellState = field(init=False, default=ShellState.TITLE)
     _booted: bool = field(default=False, init=False)
     _last_gravity_tick: int = field(default=0, init=False)
+    _save_store: PlayerSaveStore = field(init=False, repr=False)
+    _player_save_data: PlayerSaveData = field(init=False, repr=False)
+    _last_saved_snapshot: PlayerSaveData | None = field(default=None, init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self._save_store = PlayerSaveStore(path=self.config.save_path)
+        self._player_save_data = self._save_store.load()
+        self.player_settings = self._player_save_data.settings
+
         if self.stage_catalog is None and self.startup_failure is None:
             assets = resolve_bootstrap_assets(
                 self.config,
@@ -135,6 +144,7 @@ class TetrisApp:
         self.engine = EngineRuntime.from_config(self.config)
         if self.stage_catalog is not None:
             self.stage_session = StageSession(catalog=self.stage_catalog)
+            self._restore_player_state()
         self.loop = GameLoop(
             config=self.config,
             renderer=self.renderer,
@@ -219,6 +229,7 @@ class TetrisApp:
             return
 
         self.loop.stop()
+        self._persist_player_state()
         if self.stage_session is not None:
             self.stage_session.reset()
         self._sync_shell_state_from_session()
@@ -229,6 +240,20 @@ class TetrisApp:
     def stop(self) -> None:
         if self._booted:
             self.loop.stop()
+
+    def update_player_settings(self, *, show_controls: bool | None = None) -> bool:
+        updated_settings = replace(
+            self.player_settings,
+            show_controls=self.player_settings.show_controls if show_controls is None else show_controls,
+        )
+        if updated_settings == self.player_settings:
+            return False
+
+        self.player_settings = updated_settings
+        self._persist_player_state()
+        if self._booted:
+            self._render_now()
+        return True
 
     def handle_action(self, action: AppAction | str) -> bool:
         try:
@@ -334,6 +359,7 @@ class TetrisApp:
         self._last_gravity_tick = self.loop.state.tick
         self._sync_shell_state_from_session()
         self._render_now()
+        self._persist_player_state()
         return True
 
     def advance_stage(self) -> bool:
@@ -352,6 +378,7 @@ class TetrisApp:
         self._last_gravity_tick = self.loop.state.tick
         self._sync_shell_state_from_session()
         self._render_now()
+        self._persist_player_state()
         return True
 
     def _apply_move(self, action: Callable[[PieceSession], bool]) -> bool:
@@ -407,6 +434,18 @@ class TetrisApp:
         self._shell_state = ShellState.STARTUP_ERROR
 
     def _status_message(self) -> str:
+        if not self.player_settings.show_controls:
+            if self.shell_state == ShellState.TITLE:
+                return "Ready to begin."
+            if self.shell_state == ShellState.PAUSED:
+                return "Game paused."
+            if self.shell_state == ShellState.CLEARED:
+                if self._can_advance():
+                    return "Stage cleared."
+                return "Final stage cleared."
+            if self.shell_state == ShellState.FAILED:
+                return "Stage failed."
+            return "Stage in progress."
         if self.shell_state == ShellState.TITLE:
             return "Press Enter or Start to begin."
         if self.shell_state == ShellState.PAUSED:
@@ -454,6 +493,7 @@ class TetrisApp:
         return self.stage_session.catalog.next_after(self.stage_session.current_stage.identifier) is not None
 
     def _sync_shell_state_from_session(self) -> None:
+        previous_shell_state = self._shell_state
         if self.startup_failure is not None:
             self._shell_state = ShellState.STARTUP_ERROR
             return
@@ -462,12 +502,118 @@ class TetrisApp:
             return
         if self.stage_session.state.status == "cleared":
             self._shell_state = ShellState.CLEARED
+            if previous_shell_state != self._shell_state:
+                self._persist_player_state()
             return
         if self.stage_session.state.status == "failed":
             self._shell_state = ShellState.FAILED
+            if previous_shell_state != self._shell_state:
+                self._persist_player_state()
             return
         if self._shell_state != ShellState.PAUSED:
             self._shell_state = ShellState.ACTIVE
+
+    def _restore_player_state(self) -> None:
+        if self.stage_session is None:
+            return
+
+        progress = self._player_save_data.progress
+        current_stage_id = self._resolve_catalog_stage_id(progress.current_stage_id)
+        selected_stage_id = self._resolve_catalog_stage_id(progress.last_selected_stage_id)
+        unlocked_stage_id = self._furthest_stage_id(
+            self._resolve_catalog_stage_id(progress.unlocked_stage_id),
+            current_stage_id,
+            selected_stage_id,
+        )
+        if unlocked_stage_id is None:
+            unlocked_stage_id = self.stage_session.catalog.first().identifier
+
+        restored_stage_id = selected_stage_id or current_stage_id or unlocked_stage_id
+        if self._stage_index(restored_stage_id) > self._stage_index(unlocked_stage_id):
+            restored_stage_id = unlocked_stage_id
+
+        self.stage_session.state.current_stage_id = restored_stage_id
+        self._player_save_data = PlayerSaveData(
+            progress=PlayerProgress(
+                unlocked_stage_id=unlocked_stage_id,
+                current_stage_id=restored_stage_id,
+                last_selected_stage_id=restored_stage_id,
+            ),
+            settings=self.player_settings,
+        )
+
+    def _persist_player_state(self) -> bool:
+        snapshot = self._build_player_save_data()
+        if snapshot == self._last_saved_snapshot:
+            return True
+        if not self._save_store.save(snapshot):
+            return False
+        self._player_save_data = snapshot
+        self._last_saved_snapshot = snapshot
+        return True
+
+    def _build_player_save_data(self) -> PlayerSaveData:
+        progress = self._player_save_data.progress
+        if self.stage_session is None:
+            return PlayerSaveData(progress=progress, settings=self.player_settings)
+
+        current_stage_id = self._resolve_catalog_stage_id(self.stage_session.current_stage.identifier)
+        last_selected_stage_id = current_stage_id
+        unlocked_stage_id = self._furthest_stage_id(progress.unlocked_stage_id, current_stage_id)
+
+        if self.stage_session.state.status == "cleared":
+            next_stage_id = self._next_stage_id(current_stage_id)
+            if next_stage_id is not None:
+                last_selected_stage_id = next_stage_id
+                unlocked_stage_id = self._furthest_stage_id(unlocked_stage_id, next_stage_id)
+
+        if unlocked_stage_id is None:
+            unlocked_stage_id = self.stage_session.catalog.first().identifier
+        if current_stage_id is None:
+            current_stage_id = unlocked_stage_id
+        if last_selected_stage_id is None:
+            last_selected_stage_id = unlocked_stage_id
+
+        return PlayerSaveData(
+            progress=PlayerProgress(
+                unlocked_stage_id=unlocked_stage_id,
+                current_stage_id=current_stage_id,
+                last_selected_stage_id=last_selected_stage_id,
+            ),
+            settings=self.player_settings,
+        )
+
+    def _resolve_catalog_stage_id(self, stage_id: str | None) -> str | None:
+        if self.stage_session is None or stage_id is None:
+            return None
+        try:
+            self.stage_session.catalog.get(stage_id)
+        except KeyError:
+            return None
+        return stage_id
+
+    def _stage_index(self, stage_id: str) -> int:
+        if self.stage_session is None:
+            return -1
+        for index, stage in enumerate(self.stage_session.catalog.stages):
+            if stage.identifier == stage_id:
+                return index
+        return -1
+
+    def _furthest_stage_id(self, *stage_ids: str | None) -> str | None:
+        valid_stage_ids = [stage_id for stage_id in stage_ids if self._resolve_catalog_stage_id(stage_id) is not None]
+        if not valid_stage_ids:
+            return None
+        return max(valid_stage_ids, key=self._stage_index)
+
+    def _next_stage_id(self, stage_id: str | None) -> str | None:
+        if self.stage_session is None or stage_id is None:
+            return None
+        try:
+            next_stage = self.stage_session.catalog.next_after(stage_id)
+        except KeyError:
+            return None
+        return next_stage.identifier if next_stage is not None else None
 
     def _build_startup_error_view(self) -> GameViewModel:
         board_rows = tuple(

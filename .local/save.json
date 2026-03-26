@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "progress": {
+    "unlocked_stage_id": "stage-001",
+    "current_stage_id": "stage-001",
+    "last_selected_stage_id": "stage-001"
+  },
+  "settings": {
+    "show_controls": true
+  }
+}

@@ -27,8 +27,8 @@ def test_core_modules_import() -> None:
     assert callable(main_module.main)
 
 
-def test_headless_app_bootstrap_smoke() -> None:
-    app = create_app(AppConfig(headless=True))
+def test_headless_app_bootstrap_smoke(tmp_path: Path) -> None:
+    app = create_app(AppConfig(headless=True, save_path=tmp_path / "save.json"))
 
     assert not app.is_booted
     app.boot()

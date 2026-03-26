@@ -4,8 +4,8 @@ from tetris import AppConfig, create_app
 from tetris.actions import AppAction, ShellState
 
 
-def test_headless_app_can_clear_the_five_tutorial_stages_in_order() -> None:
-    app = create_app(AppConfig(headless=True))
+def test_headless_app_can_clear_the_five_tutorial_stages_in_order(tmp_path) -> None:
+    app = create_app(AppConfig(headless=True, save_path=tmp_path / "save.json"))
     app.boot()
 
     try:
@@ -32,8 +32,8 @@ def test_headless_app_can_clear_the_five_tutorial_stages_in_order() -> None:
         app.shutdown()
 
 
-def test_restart_stage_resets_partial_tutorial_progress_in_the_app_shell() -> None:
-    app = create_app(AppConfig(headless=True))
+def test_restart_stage_resets_partial_tutorial_progress_in_the_app_shell(tmp_path) -> None:
+    app = create_app(AppConfig(headless=True, save_path=tmp_path / "save.json"))
     app.boot()
 
     try:

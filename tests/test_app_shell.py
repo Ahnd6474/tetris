@@ -54,8 +54,11 @@ print(json.dumps({
     assert not payload["ui_renderers_loaded"]
 
 
-def test_app_shell_wires_runtime_stage_and_compatibility_exports() -> None:
-    app = AppShell(config=AppConfig(headless=True), renderer=NullRenderer())
+def test_app_shell_wires_runtime_stage_and_compatibility_exports(tmp_path: Path) -> None:
+    app = AppShell(
+        config=AppConfig(headless=True, save_path=tmp_path / "save.json"),
+        renderer=NullRenderer(),
+    )
 
     assert app.loop.runtime is app.engine
     assert app.stage_session is not None
@@ -100,11 +103,11 @@ class TclError(RuntimeError):
     pass
 
 
-def test_boot_converts_missing_tkinter_into_controlled_startup_failure() -> None:
+def test_boot_converts_missing_tkinter_into_controlled_startup_failure(tmp_path: Path) -> None:
     error = ModuleNotFoundError("No module named 'tkinter'")
     error.name = "tkinter"
     app = AppShell(
-        config=AppConfig.bootstrap(),
+        config=AppConfig.bootstrap(save_path=tmp_path / "save.json"),
         renderer=_ExplodingRenderer(error),
     )
 
@@ -120,9 +123,9 @@ def test_boot_converts_missing_tkinter_into_controlled_startup_failure() -> None
     app.shutdown()
 
 
-def test_boot_converts_display_creation_failure_into_controlled_startup_failure() -> None:
+def test_boot_converts_display_creation_failure_into_controlled_startup_failure(tmp_path: Path) -> None:
     app = AppShell(
-        config=AppConfig.bootstrap(),
+        config=AppConfig.bootstrap(save_path=tmp_path / "save.json"),
         renderer=_ExplodingRenderer(TclError("no display name and no $DISPLAY environment variable")),
     )
 
