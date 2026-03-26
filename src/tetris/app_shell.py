@@ -6,9 +6,9 @@ from typing import Callable
 
 from .actions import AppAction, ShellState, build_action_model
 from .config import AppConfig, RendererStrategy, StageSource, StageSourceKind
-from .engine import EngineRuntime, EngineState, GameLoop, PieceSession
+from .engine import BoardSpec, EngineRuntime, EngineState, GameLoop, PieceSession
 from .persistence import PlayerProgress, PlayerSaveData, PlayerSaveStore, PlayerSettings
-from .stage import StageCatalog, StageSession
+from .stage import BundledStageContentSource, FileSystemStageContentSource, StageCatalog, StageSession
 from .ui import (
     BoardCellModel,
     GameViewModel,
@@ -36,10 +36,10 @@ class StartupFailure:
 
 def _load_stage_catalog(stage_source: StageSource) -> StageCatalog:
     if stage_source.kind == StageSourceKind.BUNDLED:
-        return StageCatalog.bootstrap()
+        return StageCatalog.from_source(BundledStageContentSource())
     if stage_source.path is None:
         raise ValueError("file stage sources must include a path")
-    return StageCatalog.load(stage_source.path)
+    return StageCatalog.from_source(FileSystemStageContentSource(path=stage_source.path))
 
 
 def _create_renderer(strategy: RendererStrategy) -> Renderer:
@@ -145,6 +145,7 @@ class TetrisApp:
         if self.stage_catalog is not None:
             self.stage_session = StageSession(catalog=self.stage_catalog)
             self._restore_player_state()
+            self._sync_engine_playfield()
         self.loop = GameLoop(
             config=self.config,
             renderer=self.renderer,
@@ -298,6 +299,7 @@ class TetrisApp:
             self._render_now()
             return False
 
+        self._sync_engine_playfield()
         self._last_gravity_tick = self.loop.state.tick
         self._sync_shell_state_from_session()
         self._render_now()
@@ -356,6 +358,7 @@ class TetrisApp:
             return False
 
         self.stage_session.restart()
+        self._sync_engine_playfield()
         self._last_gravity_tick = self.loop.state.tick
         self._sync_shell_state_from_session()
         self._render_now()
@@ -375,6 +378,7 @@ class TetrisApp:
         if next_stage is None:
             return False
 
+        self._sync_engine_playfield()
         self._last_gravity_tick = self.loop.state.tick
         self._sync_shell_state_from_session()
         self._render_now()
@@ -432,6 +436,19 @@ class TetrisApp:
         if self.startup_failure is None:
             self.startup_failure = failure
         self._shell_state = ShellState.STARTUP_ERROR
+
+    def _playfield_size(self) -> tuple[int, int]:
+        if self.stage_session is not None:
+            stage = self.stage_session.current_stage
+            return stage.board_width, stage.board_height
+        if self.stage_catalog is not None:
+            stage = self.stage_catalog.first()
+            return stage.board_width, stage.board_height
+        return self.config.board_width, self.config.board_height
+
+    def _sync_engine_playfield(self) -> None:
+        width, height = self._playfield_size()
+        self.engine.board = BoardSpec(width=width, height=height)
 
     def _status_message(self) -> str:
         if not self.player_settings.show_controls:
@@ -616,9 +633,10 @@ class TetrisApp:
         return next_stage.identifier if next_stage is not None else None
 
     def _build_startup_error_view(self) -> GameViewModel:
+        board_width, board_height = self._playfield_size()
         board_rows = tuple(
-            tuple(BoardCellModel(kind="empty", label="") for _ in range(self.config.board_width))
-            for _ in range(self.config.board_height)
+            tuple(BoardCellModel(kind="empty", label="") for _ in range(board_width))
+            for _ in range(board_height)
         )
         progress_lines = (
             f"Mode: {self.config.runtime_mode}",

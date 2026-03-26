@@ -6,24 +6,12 @@ from ..actions import ActionModel
 from ..stage import (
     OBJECTIVE_CLEAR_ICE,
     OBJECTIVE_COLLECT_GEMS,
-    OBJECTIVE_KEY_TO_BOTTOM,
-    OBJECTIVE_KEY_TO_DOOR,
-    DoorTile,
-    GemObject,
-    IceTile,
-    KeyObject,
     ObjectiveEvaluation,
-    RockTile,
     StageSession,
-    WallTile,
+    describe_object,
+    describe_tile,
+    objective_label,
 )
-
-REQUIREMENT_LABELS = {
-    OBJECTIVE_KEY_TO_BOTTOM: "Bring key to bottom",
-    OBJECTIVE_KEY_TO_DOOR: "Bring key to door",
-    OBJECTIVE_CLEAR_ICE: "Clear all ice",
-    OBJECTIVE_COLLECT_GEMS: "Collect all gems",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,24 +152,14 @@ def _build_cell(
 ) -> BoardCellModel:
     if active_kind is not None:
         return BoardCellModel(kind="active", label=active_kind)
-    if isinstance(obj, KeyObject) or obj == "key":
-        return BoardCellModel(kind="key", label="K")
-    if isinstance(obj, GemObject) or obj == "gem":
-        return BoardCellModel(kind="gem", label="G")
+    object_presentation = describe_object(obj)
+    if object_presentation is not None:
+        return BoardCellModel(kind=object_presentation.kind, label=object_presentation.label)
     if block is not None:
         return BoardCellModel(kind="block", label=str(block))
-    if isinstance(tile, WallTile) or tile == "wall":
-        return BoardCellModel(kind="wall", label="#")
-    if isinstance(tile, RockTile) or tile == "rock":
-        return BoardCellModel(kind="rock", label="R")
-    if isinstance(tile, IceTile):
-        return BoardCellModel(kind="cracked-ice" if tile.cracked else "ice", label="C" if tile.cracked else "I")
-    if tile == "ice":
-        return BoardCellModel(kind="ice", label="I")
-    if tile == "cracked-ice":
-        return BoardCellModel(kind="cracked-ice", label="C")
-    if isinstance(tile, DoorTile) or tile in {"door", "goal"}:
-        return BoardCellModel(kind="door", label="D")
+    tile_presentation = describe_tile(tile)
+    if tile_presentation is not None:
+        return BoardCellModel(kind=tile_presentation.kind, label=tile_presentation.label)
     return BoardCellModel(kind="empty", label="")
 
 
@@ -202,7 +180,7 @@ def _build_requirement_models(session: StageSession) -> tuple[RequirementStatusM
     completed_by_kind = {result.kind: result.completed for result in evaluation.results} if evaluation else {}
     return tuple(
         RequirementStatusModel(
-            label=REQUIREMENT_LABELS.get(requirement.kind, requirement.kind.replace("_", " ").title()),
+            label=objective_label(requirement.kind),
             completed=completed_by_kind.get(requirement.kind, False),
         )
         for requirement in stage.objective.requirements

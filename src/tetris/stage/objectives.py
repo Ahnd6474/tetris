@@ -26,6 +26,47 @@ KNOWN_OBJECTIVE_KINDS = frozenset(
 
 
 @dataclass(frozen=True, slots=True)
+class ObjectiveSnapshot:
+    remaining_ice: int
+    remaining_gems: int
+    key_positions: tuple[tuple[int, int], ...]
+    key_at_bottom: bool
+    key_on_goal: bool
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectiveRule:
+    kind: str
+    label: str
+
+    def evaluate(self, snapshot: ObjectiveSnapshot) -> bool:
+        if self.kind == OBJECTIVE_KEY_TO_BOTTOM:
+            return snapshot.key_at_bottom
+        if self.kind == OBJECTIVE_KEY_TO_DOOR:
+            return snapshot.key_on_goal
+        if self.kind == OBJECTIVE_CLEAR_ICE:
+            return snapshot.remaining_ice == 0
+        if self.kind == OBJECTIVE_COLLECT_GEMS:
+            return snapshot.remaining_gems == 0
+        raise ValueError(f"unknown objective kind: {self.kind}")
+
+
+OBJECTIVE_RULES = {
+    OBJECTIVE_KEY_TO_BOTTOM: ObjectiveRule(kind=OBJECTIVE_KEY_TO_BOTTOM, label="Bring key to bottom"),
+    OBJECTIVE_KEY_TO_DOOR: ObjectiveRule(kind=OBJECTIVE_KEY_TO_DOOR, label="Bring key to door"),
+    OBJECTIVE_CLEAR_ICE: ObjectiveRule(kind=OBJECTIVE_CLEAR_ICE, label="Clear all ice"),
+    OBJECTIVE_COLLECT_GEMS: ObjectiveRule(kind=OBJECTIVE_COLLECT_GEMS, label="Collect all gems"),
+}
+
+
+def objective_label(kind: str) -> str:
+    rule = OBJECTIVE_RULES.get(kind)
+    if rule is None:
+        return kind.replace("_", " ").title()
+    return rule.label
+
+
+@dataclass(frozen=True, slots=True)
 class ObjectiveRequirement:
     kind: str
 
@@ -116,18 +157,17 @@ def evaluate_objectives(definition: ObjectiveDefinition, session: "PieceSession"
     )
     key_at_bottom = any(row_index == session.height - 1 for _, row_index in key_positions)
     key_on_goal = any(is_goal_tile(session.tiles[row_index][column_index]) for column_index, row_index in key_positions)
+    snapshot = ObjectiveSnapshot(
+        remaining_ice=remaining_ice,
+        remaining_gems=remaining_gems,
+        key_positions=key_positions,
+        key_at_bottom=key_at_bottom,
+        key_on_goal=key_on_goal,
+    )
 
     results: list[ObjectiveRequirementResult] = []
     for requirement in definition.requirements:
-        completed = False
-        if requirement.kind == OBJECTIVE_KEY_TO_BOTTOM:
-            completed = key_at_bottom
-        elif requirement.kind == OBJECTIVE_KEY_TO_DOOR:
-            completed = key_on_goal
-        elif requirement.kind == OBJECTIVE_CLEAR_ICE:
-            completed = remaining_ice == 0
-        elif requirement.kind == OBJECTIVE_COLLECT_GEMS:
-            completed = remaining_gems == 0
+        completed = OBJECTIVE_RULES[requirement.kind].evaluate(snapshot)
         results.append(ObjectiveRequirementResult(kind=requirement.kind, completed=completed))
 
     completed = all(result.completed for result in results)

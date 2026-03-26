@@ -1,4 +1,5 @@
 from .cells import (
+    CellPresentation,
     DoorTile,
     GemObject,
     GoalTile,
@@ -8,10 +9,21 @@ from .cells import (
     WallTile,
     apply_line_clear_to_tile,
     clears_with_line,
+    describe_object,
+    describe_tile,
     is_goal_tile,
     is_solid_tile,
+    parse_object_token,
+    parse_tile_token,
 )
-from .data import StageCatalog, StageDefinition
+from .data import (
+    BundledStageContentSource,
+    FileSystemStageContentSource,
+    StageCatalog,
+    StageContentSource,
+    StageDefinition,
+    StageValidationError,
+)
 from .objectives import (
     OBJECTIVE_CLEAR_ICE,
     OBJECTIVE_COLLECT_GEMS,
@@ -22,11 +34,15 @@ from .objectives import (
     ObjectiveRequirement,
     ObjectiveRequirementResult,
     evaluate_objectives,
+    objective_label,
 )
 from .runtime import StageSession, StageState
 
 __all__ = [
+    "BundledStageContentSource",
+    "CellPresentation",
     "DoorTile",
+    "FileSystemStageContentSource",
     "GemObject",
     "GoalTile",
     "IceTile",
@@ -41,13 +57,20 @@ __all__ = [
     "ObjectiveRequirementResult",
     "RockTile",
     "StageCatalog",
+    "StageContentSource",
     "StageDefinition",
     "StageSession",
     "StageState",
+    "StageValidationError",
     "WallTile",
     "apply_line_clear_to_tile",
     "clears_with_line",
+    "describe_object",
+    "describe_tile",
     "evaluate_objectives",
     "is_goal_tile",
     "is_solid_tile",
+    "objective_label",
+    "parse_object_token",
+    "parse_tile_token",
 ]

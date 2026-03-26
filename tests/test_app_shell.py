@@ -8,6 +8,7 @@ from pathlib import Path
 from tetris import AppConfig
 from tetris.actions import AppAction, ShellState
 from tetris.app_shell import AppShell, StartupFailureKind
+from tetris.config import StageSource
 from tetris.engine import EngineState, GameLoop as EngineLoop
 from tetris.game_loop import GameLoop as CompatLoop
 from tetris.state import GameState
@@ -138,3 +139,81 @@ def test_boot_converts_display_creation_failure_into_controlled_startup_failure(
     assert app.game_view.stage_status == ShellState.STARTUP_ERROR.value
 
     app.shutdown()
+
+
+def test_app_runtime_and_view_follow_restored_stage_dimensions(tmp_path: Path) -> None:
+    stage_path = tmp_path / "custom-stages.json"
+    save_path = tmp_path / "save.json"
+    stage_path.write_text(
+        json.dumps(
+            {
+                "stages": [
+                    {
+                        "id": "stage-001",
+                        "title": "Small Stage",
+                        "objective": {
+                            "kind": "key_to_bottom",
+                            "summary": "Bring the key to the bottom row.",
+                        },
+                        "board_width": 4,
+                        "board_height": 4,
+                        "board": ["....", "....", "....", "...."],
+                        "tiles": ["....", "....", "....", "...."],
+                        "objects": ["....", ".K..", "....", "...."],
+                    },
+                    {
+                        "id": "stage-002",
+                        "title": "Wide Stage",
+                        "objective": {
+                            "kind": "key_to_bottom",
+                            "summary": "Bring the key to the bottom row.",
+                        },
+                        "board_width": 6,
+                        "board_height": 5,
+                        "board": ["......", "......", "......", "......", "......"],
+                        "tiles": ["......", "......", "......", "......", "......"],
+                        "objects": ["......", "..K...", "......", "......", "......"],
+                    },
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    save_path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "progress": {
+                    "unlocked_stage_id": "stage-002",
+                    "current_stage_id": "stage-002",
+                    "last_selected_stage_id": "stage-002",
+                },
+                "settings": {
+                    "show_controls": True,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    app = AppShell(
+        config=AppConfig.bootstrap(
+            headless=True,
+            stage_source=StageSource.file(stage_path),
+            save_path=save_path,
+        ),
+        renderer=NullRenderer(),
+    )
+
+    try:
+        app.boot()
+
+        assert app.stage_session is not None
+        assert app.stage_session.current_stage.identifier == "stage-002"
+        assert app.engine.board.width == 6
+        assert app.engine.board.height == 5
+        assert app.game_view.board_width == 6
+        assert app.game_view.board_height == 5
+        assert app.objective_panel.stage_title == "Wide Stage"
+    finally:
+        app.shutdown()
