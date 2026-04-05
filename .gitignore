@@ -11,3 +11,8 @@ dist/
 .local/
 .idea/
 src/*.egg-info/
+
+_tmp_*/
+.parallel_runs/
+.lineages/
+jakal-flow-logs/
